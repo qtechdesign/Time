@@ -2,5 +2,4 @@ streamlit==1.27.2
 pandas==2.1.1
 plotly==5.17.0
 numpy==1.26.0
-kaleido==0.2.1
-clipboard.js==2.0.8 
+kaleido==0.2.1 
