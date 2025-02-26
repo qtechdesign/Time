@@ -175,7 +175,7 @@ def add_copy_button_to_chart(fig, title="Chart"):
             st.warning(f"Error generating image: {str(e)}")
             return
         
-        # Create HTML with both copy and download buttons
+        # Create HTML with both copy and download buttons - SIMPLIFIED VERSION
         buttons_html = f"""
         <div class="chart-action-container">
             <button 
@@ -198,7 +198,10 @@ def add_copy_button_to_chart(fig, title="Chart"):
             ✅ Chart copied to clipboard!
         </div>
         """
-        st.markdown(buttons_html, unsafe_allow_html=True)
+        
+        # Use components.html instead of st.markdown for better HTML rendering
+        import streamlit.components.v1 as components
+        components.html(buttons_html, height=80)
     except Exception as e:
         st.warning(f"Unable to generate chart action buttons: {str(e)}")
         st.code(str(e))
