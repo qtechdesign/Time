@@ -16,61 +16,129 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Add clipboard.js for graph copying - updated with more robust initialization
+# Add clipboard.js and modern clipboard API for graph copying
 st.markdown("""
 <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.8/clipboard.min.js"></script>
 <script>
-// Wait for DOM to be fully loaded
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(function() {
-        // Initialize clipboard.js with a delay to ensure all elements are ready
-        try {
-            var clipboard = new ClipboardJS('.copy-btn');
-            console.log('Clipboard.js initialized successfully');
-            
-            clipboard.on('success', function(e) {
-                console.log('Copy success!');
-                var successMsg = document.getElementById('copy-success-' + e.trigger.getAttribute('data-target'));
-                if(successMsg) {
-                    successMsg.style.display = 'block';
-                    setTimeout(function() {
-                        successMsg.style.display = 'none';
-                    }, 2000);
+// Function to initialize clipboard functionality
+function initClipboard() {
+    try {
+        // Try to initialize clipboard.js
+        var clipboard = new ClipboardJS('.copy-btn');
+        console.log('Clipboard.js initialized');
+        
+        clipboard.on('success', function(e) {
+            console.log('Copy success via clipboard.js');
+            showSuccessMessage(e.trigger.getAttribute('data-target'));
+            e.clearSelection();
+        });
+        
+        clipboard.on('error', function(e) {
+            console.log('Clipboard.js failed, trying navigator.clipboard API');
+            // Try the modern clipboard API as fallback
+            tryNavigatorClipboard(e.trigger);
+        });
+    } catch (err) {
+        console.error('Error initializing clipboard:', err);
+    }
+}
+
+// Function to try the modern navigator.clipboard API
+function tryNavigatorClipboard(buttonElement) {
+    if (!buttonElement || !navigator.clipboard) {
+        console.error('Modern clipboard API not available');
+        alert('Copying failed. Please use the download button instead.');
+        return;
+    }
+    
+    var imageUrl = buttonElement.getAttribute('data-clipboard-text');
+    
+    // Fetch the image and copy it using the modern API
+    fetch(imageUrl)
+        .then(response => response.blob())
+        .then(blob => {
+            try {
+                // For browsers supporting clipboard.write
+                if (navigator.clipboard.write) {
+                    navigator.clipboard.write([
+                        new ClipboardItem({
+                            'image/png': blob
+                        })
+                    ]).then(function() {
+                        console.log('Image copied via navigator.clipboard.write');
+                        showSuccessMessage(buttonElement.getAttribute('data-target'));
+                    }).catch(function(err) {
+                        console.error('navigator.clipboard.write failed:', err);
+                        alert('Copying failed. Please use the download button instead.');
+                    });
+                } else {
+                    alert('Direct image copying not supported in this browser. Please use the download button.');
                 }
-                e.clearSelection();
-            });
-            
-            clipboard.on('error', function(e) {
-                console.error('Copy error:', e);
-                alert('Failed to copy to clipboard. Please try again or use the download option.');
-            });
-        } catch (err) {
-            console.error('Error initializing clipboard:', err);
-        }
-    }, 1000); // 1 second delay to ensure DOM is ready
+            } catch (err) {
+                console.error('Modern clipboard operation failed:', err);
+                alert('Copying failed. Please use the download button instead.');
+            }
+        })
+        .catch(err => {
+            console.error('Failed to fetch image for clipboard:', err);
+            alert('Copying failed. Please use the download button instead.');
+        });
+}
+
+// Function to show success message
+function showSuccessMessage(targetId) {
+    var successMsg = document.getElementById('copy-success-' + targetId);
+    if(successMsg) {
+        successMsg.style.display = 'block';
+        setTimeout(function() {
+            successMsg.style.display = 'none';
+        }, 2000);
+    }
+}
+
+// Initialize clipboard when DOM is loaded and periodically check for new buttons
+document.addEventListener('DOMContentLoaded', function() {
+    // Initial initialization
+    setTimeout(initClipboard, 1000);
+    
+    // Periodically reinitialize to catch dynamically added buttons
+    setInterval(initClipboard, 3000);
 });
 </script>
 <style>
-.copy-btn {
+.chart-action-container {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+.copy-btn, .download-btn {
     background-color: #4a86e8;
     color: white;
     border: none;
     padding: 8px 15px;
-    margin: 10px 0;
     border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    display: block;
     text-align: center;
-    width: 100%;
-    max-width: 300px;
+    flex: 1;
+    min-width: 150px;
+    max-width: 200px;
     transition: background-color 0.3s;
+    text-decoration: none;
+    display: inline-block;
+}
+.download-btn {
+    background-color: #36B37E;
 }
 .copy-btn:hover {
     background-color: #3a76d8;
 }
+.download-btn:hover {
+    background-color: #2d9669;
+}
 .copy-success {
-    color: green;
+    color: #36B37E;
     display: none;
     margin-top: 5px;
     font-weight: bold;
@@ -86,11 +154,11 @@ except ImportError:
     KALEIDO_AVAILABLE = False
     st.warning("⚠️ Chart copying feature requires the kaleido package. Install with: `pip install -U kaleido`")
 
-# Custom function to add copy button for Plotly charts - COMPLETELY REWRITTEN
+# Custom function to add copy button for Plotly charts
 def add_copy_button_to_chart(fig, title="Chart"):
-    """Add a button to copy the chart as an image to clipboard"""
+    """Add buttons to copy or download the chart as an image"""
     if not KALEIDO_AVAILABLE:
-        st.warning("📌 Copy feature requires the kaleido package. Install with: `pip install -U kaleido`")
+        st.warning("📌 Chart export features require the kaleido package. Install with: `pip install -U kaleido`")
         return
         
     try:
@@ -102,47 +170,37 @@ def add_copy_button_to_chart(fig, title="Chart"):
         try:
             img_bytes = fig.to_image(format="png", scale=3, width=1200, height=800)
             img_b64 = base64.b64encode(img_bytes).decode()
+            img_data_url = f"data:image/png;base64,{img_b64}"
         except Exception as e:
             st.warning(f"Error generating image: {str(e)}")
             return
         
-        # Create HTML for copy button with improved design and error handling
-        copy_button_html = f"""
-        <div style="margin: 10px 0;">
+        # Create HTML with both copy and download buttons
+        buttons_html = f"""
+        <div class="chart-action-container">
             <button 
                 class="copy-btn" 
-                data-clipboard-text="data:image/png;base64,{img_b64}"
+                data-clipboard-text="{img_data_url}"
                 data-target="{chart_id}"
             >
-                📋 Copy Chart to Clipboard
+                📋 Copy to Clipboard
             </button>
+            
             <a 
-                href="data:image/png;base64,{img_b64}" 
+                href="{img_data_url}" 
                 download="{title.replace(' ', '_')}.png" 
-                style="display:none;"
+                class="download-btn"
             >
-                Download Image
+                💾 Download PNG
             </a>
-            <div id="copy-success-{chart_id}" class="copy-success">
-                ✅ Chart copied to clipboard! You can now paste it in WhatsApp, email, etc.
-            </div>
-            <script>
-                // Ensure this specific button is properly initialized
-                setTimeout(function() {{
-                    var btnElement = document.querySelector('[data-target="{chart_id}"]');
-                    if (btnElement && !btnElement.hasAttribute('data-clipboard-initialized')) {{
-                        btnElement.setAttribute('data-clipboard-initialized', 'true');
-                        btnElement.addEventListener('click', function() {{
-                            console.log('Button {chart_id} clicked');
-                        }});
-                    }}
-                }}, 500);
-            </script>
+        </div>
+        <div id="copy-success-{chart_id}" class="copy-success">
+            ✅ Chart copied to clipboard!
         </div>
         """
-        st.markdown(copy_button_html, unsafe_allow_html=True)
+        st.markdown(buttons_html, unsafe_allow_html=True)
     except Exception as e:
-        st.warning(f"Unable to generate copy button: {str(e)}")
+        st.warning(f"Unable to generate chart action buttons: {str(e)}")
         st.code(str(e))
 
 # Custom CSS for dark mode and sleeker design - REMOVE ANIMATIONS
