@@ -16,196 +16,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Add clipboard.js and modern clipboard API for graph copying
-st.markdown("""
-<script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.8/clipboard.min.js"></script>
-<script>
-// Function to initialize clipboard functionality
-function initClipboard() {
-    try {
-        // Try to initialize clipboard.js
-        var clipboard = new ClipboardJS('.copy-btn');
-        console.log('Clipboard.js initialized');
-        
-        clipboard.on('success', function(e) {
-            console.log('Copy success via clipboard.js');
-            showSuccessMessage(e.trigger.getAttribute('data-target'));
-            e.clearSelection();
-        });
-        
-        clipboard.on('error', function(e) {
-            console.log('Clipboard.js failed, trying navigator.clipboard API');
-            // Try the modern clipboard API as fallback
-            tryNavigatorClipboard(e.trigger);
-        });
-    } catch (err) {
-        console.error('Error initializing clipboard:', err);
-    }
-}
-
-// Function to try the modern navigator.clipboard API
-function tryNavigatorClipboard(buttonElement) {
-    if (!buttonElement || !navigator.clipboard) {
-        console.error('Modern clipboard API not available');
-        alert('Copying failed. Please use the download button instead.');
-        return;
-    }
-    
-    var imageUrl = buttonElement.getAttribute('data-clipboard-text');
-    
-    // Fetch the image and copy it using the modern API
-    fetch(imageUrl)
-        .then(response => response.blob())
-        .then(blob => {
-            try {
-                // For browsers supporting clipboard.write
-                if (navigator.clipboard.write) {
-                    navigator.clipboard.write([
-                        new ClipboardItem({
-                            'image/png': blob
-                        })
-                    ]).then(function() {
-                        console.log('Image copied via navigator.clipboard.write');
-                        showSuccessMessage(buttonElement.getAttribute('data-target'));
-                    }).catch(function(err) {
-                        console.error('navigator.clipboard.write failed:', err);
-                        alert('Copying failed. Please use the download button instead.');
-                    });
-                } else {
-                    alert('Direct image copying not supported in this browser. Please use the download button.');
-                }
-            } catch (err) {
-                console.error('Modern clipboard operation failed:', err);
-                alert('Copying failed. Please use the download button instead.');
-            }
-        })
-        .catch(err => {
-            console.error('Failed to fetch image for clipboard:', err);
-            alert('Copying failed. Please use the download button instead.');
-        });
-}
-
-// Function to show success message
-function showSuccessMessage(targetId) {
-    var successMsg = document.getElementById('copy-success-' + targetId);
-    if(successMsg) {
-        successMsg.style.display = 'block';
-        setTimeout(function() {
-            successMsg.style.display = 'none';
-        }, 2000);
-    }
-}
-
-// Initialize clipboard when DOM is loaded and periodically check for new buttons
-document.addEventListener('DOMContentLoaded', function() {
-    // Initial initialization
-    setTimeout(initClipboard, 1000);
-    
-    // Periodically reinitialize to catch dynamically added buttons
-    setInterval(initClipboard, 3000);
-});
-</script>
-<style>
-.chart-action-container {
-    display: flex;
-    gap: 10px;
-    margin: 10px 0;
-    flex-wrap: wrap;
-}
-.copy-btn, .download-btn {
-    background-color: #4a86e8;
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 14px;
-    text-align: center;
-    flex: 1;
-    min-width: 150px;
-    max-width: 200px;
-    transition: background-color 0.3s;
-    text-decoration: none;
-    display: inline-block;
-}
-.download-btn {
-    background-color: #36B37E;
-}
-.copy-btn:hover {
-    background-color: #3a76d8;
-}
-.download-btn:hover {
-    background-color: #2d9669;
-}
-.copy-success {
-    color: #36B37E;
-    display: none;
-    margin-top: 5px;
-    font-weight: bold;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Check for kaleido package for image export
-try:
-    import kaleido
-    KALEIDO_AVAILABLE = True
-except ImportError:
-    KALEIDO_AVAILABLE = False
-    st.warning("⚠️ Chart copying feature requires the kaleido package. Install with: `pip install -U kaleido`")
-
-# Custom function to add copy button for Plotly charts
-def add_copy_button_to_chart(fig, title="Chart"):
-    """Add buttons to copy or download the chart as an image"""
-    if not KALEIDO_AVAILABLE:
-        st.warning("📌 Chart export features require the kaleido package. Install with: `pip install -U kaleido`")
-        return
-        
-    try:
-        # Generate a unique ID for this chart
-        import uuid
-        chart_id = str(uuid.uuid4())[:8]
-        
-        # Convert chart to base64 image with higher quality
-        try:
-            img_bytes = fig.to_image(format="png", scale=3, width=1200, height=800)
-            img_b64 = base64.b64encode(img_bytes).decode()
-            img_data_url = f"data:image/png;base64,{img_b64}"
-        except Exception as e:
-            st.warning(f"Error generating image: {str(e)}")
-            return
-        
-        # Create HTML with both copy and download buttons - SIMPLIFIED VERSION
-        buttons_html = f"""
-        <div class="chart-action-container">
-            <button 
-                class="copy-btn" 
-                data-clipboard-text="{img_data_url}"
-                data-target="{chart_id}"
-            >
-                📋 Copy to Clipboard
-            </button>
-            
-            <a 
-                href="{img_data_url}" 
-                download="{title.replace(' ', '_')}.png" 
-                class="download-btn"
-            >
-                💾 Download PNG
-            </a>
-        </div>
-        <div id="copy-success-{chart_id}" class="copy-success">
-            ✅ Chart copied to clipboard!
-        </div>
-        """
-        
-        # Use components.html instead of st.markdown for better HTML rendering
-        import streamlit.components.v1 as components
-        components.html(buttons_html, height=80)
-    except Exception as e:
-        st.warning(f"Unable to generate chart action buttons: {str(e)}")
-        st.code(str(e))
-
 # Custom CSS for dark mode and sleeker design - REMOVE ANIMATIONS
 st.markdown("""
 <style>
@@ -299,22 +109,6 @@ st.markdown("""
     /* Add space for legends */
     .plot-container {
         margin-top: 30px !important;
-    }
-
-    .copy-btn, .download-btn {
-        background-color: #4a86e8;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        margin: 5px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-        text-decoration: none;
-        display: inline-block;
-    }
-    .copy-btn:hover, .download-btn:hover {
-        background-color: #5c92e8;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -608,7 +402,6 @@ def display_key_facts(df, raw_df):
         )
         
         st.plotly_chart(fig, use_container_width=True)
-        add_copy_button_to_chart(fig, "Top Contractors by Unique Workers")
         
         # Display all contractors on the home page
         st.subheader("All Contractors - Unique Worker Analysis")
@@ -649,7 +442,6 @@ def display_key_facts(df, raw_df):
         )
         
         st.plotly_chart(fig, use_container_width=True)
-        add_copy_button_to_chart(fig, "Top Roles by Worker Count")
 
 # Helper functions for data display
 def display_column_mapping_info(raw_df):
@@ -936,13 +728,6 @@ elif st.session_state.step == 2:
                         # Display the chart
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        # Add copy button
-                        if len(selected_contractors) == 1:
-                            chart_title = f"Unique Workers per Week for {selected_contractors[0]}"
-                        else:
-                            chart_title = f"Unique Workers per Week Comparison"
-                        add_copy_button_to_chart(fig, chart_title)
-                        
                         # If only one contractor is selected, show detailed statistics
                         if len(selected_contractors) == 1:
                             # Summary statistics with animation
@@ -1055,12 +840,6 @@ elif st.session_state.step == 2:
                                     # Fill NaN with 0
                                     area_pivot = area_pivot.fillna(0)
                                     
-                                    # Calculate total and ensure site/welfare columns exist
-                                    if site_area and site_area not in area_pivot.columns:
-                                        area_pivot[site_area] = 0
-                                    if welfare_area and welfare_area not in area_pivot.columns:
-                                        area_pivot[welfare_area] = 0
-                                    
                                     # Calculate totals and percentages
                                     area_columns = [col for col in area_pivot.columns if col != 'ISO Week']
                                     area_pivot['Total'] = area_pivot[area_columns].sum(axis=1)
@@ -1098,9 +877,6 @@ elif st.session_state.step == 2:
                                     )
                                     
                                     st.plotly_chart(fig, use_container_width=True)
-                                    
-                                    # Add copy button
-                                    add_copy_button_to_chart(fig, f"Time Spent by Area for {selected_contractor}")
                                     
                                     # Summary statistics for each area with expandable details
                                     with st.expander("Time Breakdown Details"):
@@ -1158,9 +934,6 @@ elif st.session_state.step == 2:
                                             )
                                             
                                             st.plotly_chart(fig, use_container_width=True)
-                                            
-                                            # Add copy button
-                                            add_copy_button_to_chart(fig, "Site Time Percentage Gauge")
                                         
                                         with col2:
                                             # Create a pie chart for time distribution
@@ -1186,9 +959,6 @@ elif st.session_state.step == 2:
                                             )
                                             
                                             st.plotly_chart(fig, use_container_width=True)
-                                            
-                                            # Add copy button
-                                            add_copy_button_to_chart(fig, "Time Distribution Pie Chart")
                                         
                                         # Time efficiency metrics with animation
                                         col1, col2, col3 = st.columns(3)
@@ -1274,9 +1044,6 @@ elif st.session_state.step == 2:
                             
                             st.plotly_chart(fig, use_container_width=True)
                             
-                            # Add copy button for comparison chart
-                            add_copy_button_to_chart(fig, "Contractor Comparison Chart")
-                            
                             # Summary statistics
                             st.subheader("Contractor Statistics 📈")
                             stats = comparison_df.groupby('Contractor')['Number of Workers'].agg(['sum', 'mean', 'max']).reset_index()
@@ -1341,9 +1108,6 @@ elif st.session_state.step == 2:
                         
                         st.plotly_chart(fig, use_container_width=True)
                         
-                        # Add copy button
-                        add_copy_button_to_chart(fig, f"Role Distribution for {selected_contractor}")
-                        
                         # Role metrics with animation
                         total_workers = role_data['Number of Workers'].sum()
                         top_role = role_data.iloc[0]['Role']
@@ -1398,9 +1162,6 @@ elif st.session_state.step == 2:
                         )
                         
                         st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Add copy button
-                        add_copy_button_to_chart(fig, f"Unique Worker Role Trends for {selected_contractor}")
                 else:
                     st.info("Please select a contractor")
         
