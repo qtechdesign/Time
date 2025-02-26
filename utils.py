@@ -5,178 +5,378 @@ import re
 
 def process_data(df):
     """
-    Process the raw data for visualization.
-    This function handles the specific CSV format from the Time tracking system.
-    It returns data grouped by ISO Week and Role with counts.
+    Process the raw data from Time Tracker CSV format.
+    Handles the specific format with Contractor, Worker Name, In/Out times, etc.
+    Returns data grouped by ISO Week, Role, and Contractor with worker counts.
     """
     try:
-        # Check if this is the specific Time CSV format
-        expected_columns = ['Contractor', 'Role', 'Job Title']
-        if any(col in df.columns for col in expected_columns):
-            print("Processing Time CSV format")
+        # First, make a copy to avoid modifying the original
+        df = df.copy()
+        
+        print(f"Original columns: {df.columns.tolist()}")
+        
+        # For Time Tracker specific format with In/Out columns
+        time_format = False
+        expected_columns = ['Contractor', 'Worker Name', 'In', 'Out', 'Area', 'Total Minutes']
+        
+        # Check if this is likely the Time Tracker format
+        if any(col in df.columns for col in ['In', 'Out', 'Worker Name']):
+            print("Detected Time Tracker CSV format")
+            time_format = True
+        
+        if time_format:
+            # Ensure Contractor column exists
+            if 'Contractor' not in df.columns:
+                # Try to find a suitable contractor column with case-insensitive matching
+                contractor_cols = ['Company', 'Organization', 'Employer', 'Client', 'Vendor', 'Supplier', 'Provider']
+                
+                # First try exact match (case-insensitive)
+                for col in df.columns:
+                    if col.lower() in [c.lower() for c in ['Contractor'] + contractor_cols]:
+                        df['Contractor'] = df[col]
+                        print(f"Using {col} as Contractor column (case-insensitive match)")
+                        break
+                else:
+                    # Next try substring match
+                    for col in df.columns:
+                        if any(c.lower() in col.lower() for c in ['Contractor'] + contractor_cols):
+                            df['Contractor'] = df[col]
+                            print(f"Using {col} as Contractor column (substring match)")
+                            break
+                    else:
+                        # If still not found, use the first column if it looks like it might contain company names
+                        if len(df.columns) > 0 and df[df.columns[0]].nunique() < len(df) / 2:
+                            df['Contractor'] = df[df.columns[0]]
+                            print(f"Using {df.columns[0]} as Contractor column (first column)")
+                        else:
+                            # Create a default if none found
+                            df['Contractor'] = 'Unknown Contractor'
+                            print("Created default Contractor column")
             
-            # Standardize column names (handle missing header case)
-            if len(df.columns) >= 12 and 'Contractor' not in df.columns:
-                # Assume the CSV was loaded without headers, assign them manually
-                column_names = [
-                    'Contractor', 'Person', 'PersonID', 'StartTime', 'EndTime', 
-                    'Location', 'Area', 'Duration', 'Status', 'ID', 'Role', 'JobTitle'
-                ]
-                # Assign only as many columns as we have
-                df.columns = column_names[:len(df.columns)]
+            # Print detected contractor values for debugging
+            print(f"Detected Contractor values: {df['Contractor'].unique()[:5]}")
             
-            # Process date/time columns
-            date_columns = [col for col in df.columns if 'time' in col.lower() or 'date' in col.lower()]
+            # Ensure Role column exists
+            if 'Role' not in df.columns:
+                # Look for alternative role columns
+                role_cols = ['JobTitle', 'Job Title', 'Position', 'Trade', 'Occupation']
+                for col in df.columns:
+                    if col.lower() in [r.lower() for r in role_cols]:
+                        df['Role'] = df[col]
+                        print(f"Using {col} as Role column")
+                        break
+                else:
+                    # Check for substring matches
+                    for col in df.columns:
+                        if any(r.lower() in col.lower() for r in role_cols):
+                            df['Role'] = df[col]
+                            print(f"Using {col} as Role column (substring match)")
+                            break
+                    else:
+                        # Create a default if none found
+                        df['Role'] = 'Worker'
+                        print("Created default Role column")
             
-            # Find start time column
-            start_time_col = None
-            for col in date_columns:
-                if 'start' in col.lower():
-                    start_time_col = col
-                    break
-            
-            if not start_time_col and date_columns:
-                # Use the first date column
-                start_time_col = date_columns[0]
-            
-            # If we found a start time column, convert to ISO Week
-            if start_time_col:
+            # Process date columns (In/Out)
+            if 'In' in df.columns and 'Out' in df.columns:
+                print("Processing 'In' and 'Out' columns for dates")
                 # Try different date formats
                 date_formats = [
-                    '%d/%m/%Y %H:%M',  # 13/06/2024 11:27
-                    '%Y-%m-%d %H:%M:%S',  # 2024-06-13 11:27:00
-                    '%m/%d/%Y %H:%M',  # 6/13/2024 11:27
-                    '%d-%m-%Y %H:%M'   # 13-06-2024 11:27
+                    '%d/%m/%Y %H:%M',      # 13/06/2024 11:27
+                    '%m/%d/%Y %H:%M',      # 6/13/2024 11:27
+                    '%d-%m-%Y %H:%M',      # 13-06-2024 11:27
+                    '%Y-%m-%d %H:%M:%S',   # 2024-06-13 11:27:00
+                    '%d/%m/%Y %H:%M:%S',   # 13/06/2024 11:27:00
+                    '%m/%d/%Y %H:%M:%S'    # 6/13/2024 11:27:00
                 ]
                 
+                date_parsed = False
                 for date_format in date_formats:
                     try:
-                        # Convert to datetime
-                        df['DateTime'] = pd.to_datetime(df[start_time_col], format=date_format)
+                        # Test with a single value first
+                        sample_value = df['In'].iloc[0] if not pd.isna(df['In'].iloc[0]) else df['In'].dropna().iloc[0]
+                        datetime.strptime(sample_value, date_format)
+                        
+                        # If that works, convert the whole column
+                        df['DateTime'] = pd.to_datetime(df['In'], format=date_format)
+                        print(f"Successfully parsed dates using format: {date_format}")
+                        date_parsed = True
                         break
-                    except:
+                    except Exception as e:
+                        print(f"Failed with format {date_format}: {str(e)}")
                         continue
                 
                 # If all formats failed, try pandas default parser
-                if 'DateTime' not in df.columns:
+                if not date_parsed:
                     try:
-                        df['DateTime'] = pd.to_datetime(df[start_time_col])
-                    except:
-                        pass
+                        df['DateTime'] = pd.to_datetime(df['In'])
+                        print("Successfully parsed dates using pandas default parser")
+                        date_parsed = True
+                    except Exception as e:
+                        print(f"Failed to parse dates with pandas default parser: {str(e)}")
                 
                 # Create ISO Week from DateTime
-                if 'DateTime' in df.columns:
+                if date_parsed and 'DateTime' in df.columns:
                     df['ISO Week'] = df['DateTime'].dt.strftime('%Y-W%U')
+                    df['Date'] = df['DateTime'].dt.date
+                    print("Created ISO Week and Date from DateTime")
                 else:
                     # Extract year and week using regex if datetime conversion failed
-                    df['ISO Week'] = df[start_time_col].apply(extract_year_week)
-            
-            # Ensure we have the Role column
-            if 'Role' not in df.columns and 'JobTitle' in df.columns:
-                df['Role'] = df['JobTitle']
-            elif 'Role' not in df.columns and 'Position' in df.columns:
-                df['Role'] = df['Position']
-            
-            # Create a unique person identifier by combining name and id where available
-            person_columns = [col for col in df.columns if 'person' in col.lower() or 'name' in col.lower()]
-            if person_columns:
-                df['PersonIdentifier'] = df[person_columns[0]]
+                    df['ISO Week'] = df['In'].apply(extract_year_week)
+                    print("Created ISO Week using regex extraction")
             else:
-                # If no person column, create a dummy one
-                df['PersonIdentifier'] = 'Unknown'
+                # Look for other date/time columns
+                date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
+                if date_cols:
+                    try:
+                        # Try to parse the first date column found
+                        df['DateTime'] = pd.to_datetime(df[date_cols[0]])
+                        df['ISO Week'] = df['DateTime'].dt.strftime('%Y-W%U')
+                        df['Date'] = df['DateTime'].dt.date
+                        print(f"Created ISO Week from {date_cols[0]}")
+                    except:
+                        # If parsing fails, set default ISO Week
+                        df['ISO Week'] = 'Unknown Week'
+                        print(f"Could not parse {date_cols[0]}, created default ISO Week")
+                else:
+                    # If no date column found, set default ISO Week
+                    df['ISO Week'] = 'Unknown Week'
+                    print("Created default ISO Week column (no date columns found)")
+            
+            # Calculate time spent if needed
+            if 'Total Minutes' in df.columns:
+                # Use provided total minutes
+                print("Using existing Total Minutes column")
+                df['Duration'] = pd.to_numeric(df['Total Minutes'], errors='coerce')
+            elif 'In' in df.columns and 'Out' in df.columns:
+                # Calculate duration from In/Out
+                print("Calculating duration from In/Out columns")
+                try:
+                    # Convert In/Out to datetime if not already done
+                    if 'DateTime' not in df.columns:
+                        # Try pandas default parser first
+                        try:
+                            in_time = pd.to_datetime(df['In'])
+                            out_time = pd.to_datetime(df['Out'])
+                        except:
+                            # If that fails, try the date formats one by one
+                            for date_format in date_formats:
+                                try:
+                                    in_time = pd.to_datetime(df['In'], format=date_format)
+                                    out_time = pd.to_datetime(df['Out'], format=date_format)
+                                    break
+                                except:
+                                    continue
+                    else:
+                        in_time = df['DateTime']
+                        out_time = pd.to_datetime(df['Out'])
+                    
+                    # Calculate duration in minutes
+                    df['Duration'] = (out_time - in_time).dt.total_seconds() / 60
+                    print("Successfully calculated duration")
+                except Exception as e:
+                    print(f"Failed to calculate duration: {str(e)}")
+                    # Use Total Minutes if available as fallback
+                    if 'Total Minutes' in df.columns:
+                        df['Duration'] = pd.to_numeric(df['Total Minutes'], errors='coerce')
+                        print("Using Total Minutes as fallback")
+                    else:
+                        df['Duration'] = 60  # Default duration if calculation fails
+                        print("Using default duration (60 min) as calculation failed")
+            else:
+                # Default duration if no timing data available
+                df['Duration'] = 60
+                print("Using default Duration (no timing data available)")
+            
+            # Check for Area column to identify Site/Welfare locations
+            if 'Area' in df.columns:
+                # No changes needed, use as is
+                print(f"Using existing Area column. Values: {df['Area'].unique()[:5]}")
+            else:
+                # Try to find a suitable Area column
+                area_cols = ['Location', 'Site', 'Place', 'Zone']
+                for col in df.columns:
+                    if col.lower() in [a.lower() for a in area_cols]:
+                        df['Area'] = df[col]
+                        print(f"Using {col} as Area column")
+                        break
+                else:
+                    # Create a default if none found
+                    df['Area'] = 'Site'  # Default to Site
+                    print("Created default Area column (all set to 'Site')")
+            
+            # Create PersonIdentifier
+            if 'Worker Name' in df.columns:
+                df['PersonIdentifier'] = df['Worker Name']
+                if 'Worker ID' in df.columns:
+                    # Append ID to make it unique
+                    df['PersonIdentifier'] = df['PersonIdentifier'] + '_' + df['Worker ID'].astype(str)
+                print("Created PersonIdentifier from Worker Name/ID")
+            elif 'Bio ID' in df.columns:
+                df['PersonIdentifier'] = df['Bio ID']
+                print("Using Bio ID as PersonIdentifier")
+            else:
+                # Try to find a suitable person identifier column
+                person_cols = ['Name', 'Person', 'Employee', 'Staff']
+                for col in df.columns:
+                    if col.lower() in [p.lower() for p in person_cols] or any(p.lower() in col.lower() for p in person_cols):
+                        df['PersonIdentifier'] = df[col]
+                        print(f"Using {col} as PersonIdentifier")
+                        break
+                else:
+                    # Default person identifier
+                    df['PersonIdentifier'] = 'Unknown'
+                    print("Created default PersonIdentifier")
             
             # Count unique workers per week, role, and contractor
-            # A worker is counted once per week per role per contractor
-            result = df.drop_duplicates(
-                subset=['ISO Week', 'Role', 'Contractor', 'PersonIdentifier']
-            ).groupby(['ISO Week', 'Role', 'Contractor']).size().reset_index(name='Number of Workers')
+            print(f"Final columns before grouping: {df.columns.tolist()}")
+            print(f"Required columns - ISO Week: {df['ISO Week'].nunique()} unique values")
+            print(f"Required columns - Role: {df['Role'].nunique()} unique values")
+            print(f"Required columns - Contractor: {df['Contractor'].nunique()} unique values")
             
-            # Filter only for a specific area if available
-            if 'Area' in df.columns:
-                # Create a version filtered to only 'Site' area
-                site_df = df[df['Area'] == 'Site']
-                site_result = site_df.drop_duplicates(
+            try:
+                # Count unique workers per week, role, and contractor
+                result = df.drop_duplicates(
                     subset=['ISO Week', 'Role', 'Contractor', 'PersonIdentifier']
                 ).groupby(['ISO Week', 'Role', 'Contractor']).size().reset_index(name='Number of Workers')
-                
-                # Use this if you want to filter by site
-                # result = site_result
+                print("Successfully created grouped result")
+            except Exception as e:
+                print(f"Error in grouping with drop_duplicates: {str(e)}")
+                try:
+                    # Try a more basic grouping if the above fails
+                    result = df.groupby(['ISO Week', 'Role', 'Contractor']).size().reset_index(name='Number of Workers')
+                    print("Successfully created grouped result with simplified approach")
+                except Exception as e:
+                    print(f"Error in basic grouping: {str(e)}")
+                    # Create a default result
+                    result = pd.DataFrame({
+                        'ISO Week': ['Unknown Week'],
+                        'Role': ['Worker'],
+                        'Contractor': ['Unknown Contractor'],
+                        'Number of Workers': [1]
+                    })
+                    print("Created default result due to grouping errors")
             
-            # Pivot to get roles as columns if needed for some visualizations
-            # pivot_result = result.pivot_table(
-            #     index=['ISO Week', 'Contractor'], 
-            #     columns='Role', 
-            #     values='Number of Workers',
-            #     fill_value=0
-            # ).reset_index()
+            # Ensure result is not empty
+            if result.empty:
+                print("Creating a default result for empty dataset")
+                result = pd.DataFrame({
+                    'ISO Week': ['Unknown Week'],
+                    'Role': ['Worker'],
+                    'Contractor': ['Unknown Contractor'],
+                    'Number of Workers': [1]
+                })
             
             return result
         
-        # Handle other formats as before
-        required_columns = ['ISO Week', 'Role']
+        # Fallback processing for other CSV formats
+        print("Processing generic CSV format")
+        required_columns = ['ISO Week', 'Role', 'Contractor']
         missing_columns = [col for col in required_columns if col not in df.columns]
+        print(f"Missing columns: {missing_columns}")
         
         # If ISO Week column doesn't exist, try to create it from Date or similar column
-        if 'ISO Week' in missing_columns and 'Date' in df.columns:
-            df['ISO Week'] = pd.to_datetime(df['Date']).dt.strftime('%Y-W%V')
-            missing_columns.remove('ISO Week')
-        
-        # If there are still missing columns, raise an error
-        if missing_columns:
-            # Try to infer or create the columns based on available data
-            if 'Role' in missing_columns and 'Position' in df.columns:
-                df['Role'] = df['Position']
-                missing_columns.remove('Role')
+        if 'ISO Week' in missing_columns:
+            date_columns = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower() or col in ['In', 'Out']]
+            if date_columns:
+                try:
+                    df['ISO Week'] = pd.to_datetime(df[date_columns[0]]).dt.strftime('%Y-W%V')
+                    missing_columns.remove('ISO Week')
+                    print(f"Created ISO Week from {date_columns[0]} column")
+                except Exception as e:
+                    print(f"Failed to create ISO Week from {date_columns[0]}: {str(e)}")
             
-            if 'Role' in missing_columns and 'Job Title' in df.columns:
-                df['Role'] = df['Job Title']
-                missing_columns.remove('Role')
-                
-            # If still missing essential columns, raise error
-            if missing_columns:
-                raise ValueError(f"Required columns missing: {missing_columns}")
+            if 'ISO Week' in missing_columns:
+                # Still missing, create a default
+                df['ISO Week'] = 'Unknown Week'
+                missing_columns.remove('ISO Week')
+                print("Created default ISO Week")
         
-        # Group by ISO Week and Role, count occurrences
-        grouped_df = df.groupby(['ISO Week', 'Role']).size().reset_index(name='Number of Workers')
+        # If Role missing, try alternative columns
+        if 'Role' in missing_columns:
+            for alt_col in ['Position', 'Job Title', 'Trade', 'JobTitle', 'Occupation']:
+                if alt_col in df.columns:
+                    df['Role'] = df[alt_col]
+                    missing_columns.remove('Role')
+                    print(f"Using {alt_col} as Role")
+                    break
+            
+            if 'Role' in missing_columns:
+                # Try case-insensitive matching
+                for col in df.columns:
+                    if col.lower() in ['role', 'position', 'job title', 'trade', 'jobtitle', 'occupation']:
+                        df['Role'] = df[col]
+                        missing_columns.remove('Role')
+                        print(f"Using {col} as Role (case-insensitive match)")
+                        break
+                else:
+                    # Default role
+                    df['Role'] = 'Worker'
+                    missing_columns.remove('Role')
+                    print("Created default Role column")
+        
+        # Ensure Contractor column exists
+        if 'Contractor' in missing_columns:
+            for alt_col in ['Company', 'Organization', 'Employer', 'Client', 'Vendor', 'Supplier']:
+                if alt_col in df.columns:
+                    df['Contractor'] = df[alt_col]
+                    missing_columns.remove('Contractor')
+                    print(f"Using {alt_col} as Contractor")
+                    break
+            
+            if 'Contractor' in missing_columns:
+                # Try case-insensitive matching
+                for col in df.columns:
+                    if col.lower() in ['contractor', 'company', 'organization', 'employer', 'client', 'vendor', 'supplier']:
+                        df['Contractor'] = df[col]
+                        missing_columns.remove('Contractor')
+                        print(f"Using {col} as Contractor (case-insensitive match)")
+                        break
+                else:
+                    # Default contractor
+                    df['Contractor'] = 'Unknown Contractor'
+                    missing_columns.remove('Contractor')
+                    print("Created default Contractor column")
+        
+        # Group by ISO Week, Role, and Contractor, count occurrences
+        try:
+            print(f"Final columns before grouping: {df.columns.tolist()}")
+            print(f"Final column values - Contractor: {df['Contractor'].unique()[:5]}")
+            grouped_df = df.groupby(['ISO Week', 'Role', 'Contractor']).size().reset_index(name='Number of Workers')
+            print("Successfully created grouped result")
+        except Exception as e:
+            print(f"Error in grouping: {str(e)}")
+            # Create a default result
+            grouped_df = pd.DataFrame({
+                'ISO Week': ['Unknown Week'],
+                'Role': ['Worker'],
+                'Contractor': ['Unknown Contractor'],
+                'Number of Workers': [1]
+            })
+            print("Created default result due to grouping errors")
         
         return grouped_df
     
     except Exception as e:
-        # If processing fails, try a more flexible approach
-        print(f"Error in standard processing: {str(e)}")
-        
-        # Try to identify any column that might contain week information
-        week_columns = [col for col in df.columns if 'week' in col.lower() or 'w' in col.lower()]
-        
-        if week_columns:
-            # Use the first column that looks like it might contain week information
-            week_col = week_columns[0]
-            
-            # Try to identify any column that might contain role information
-            role_columns = [col for col in df.columns if 'role' in col.lower() or 'position' in col.lower() or 'job' in col.lower()]
-            
-            if role_columns:
-                role_col = role_columns[0]
-                
-                # Create a simplified DataFrame with the columns we found
-                simplified_df = df[[week_col, role_col]].copy()
-                simplified_df.columns = ['ISO Week', 'Role']
-                
-                # Group by ISO Week and Role, count occurrences
-                grouped_df = simplified_df.groupby(['ISO Week', 'Role']).size().reset_index(name='Number of Workers')
-                
-                return grouped_df
-        
-        # If all else fails, create a synthetic dataset for demonstration
+        # If processing fails, create a synthetic dataset for demonstration
+        print(f"Error in data processing: {str(e)}")
         print("Creating synthetic dataset for demonstration")
+        
         synthetic_weeks = [f"2023-W{w:02d}" for w in range(1, 15)]
         synthetic_roles = ['Manager', 'Supervisor', 'Operative', 'Director']
+        synthetic_contractors = ['Contractor A', 'Contractor B', 'Contractor C']
         
         synthetic_data = []
         for week in synthetic_weeks:
             for role in synthetic_roles:
-                count = np.random.randint(1, 20)
-                synthetic_data.append({'ISO Week': week, 'Role': role, 'Number of Workers': count})
+                for contractor in synthetic_contractors:
+                    count = np.random.randint(1, 20)
+                    synthetic_data.append({
+                        'ISO Week': week, 
+                        'Role': role, 
+                        'Contractor': contractor,
+                        'Number of Workers': count
+                    })
         
         return pd.DataFrame(synthetic_data)
 
@@ -185,6 +385,9 @@ def extract_year_week(date_str):
     Extract year and week from a date string using regex
     """
     try:
+        if not isinstance(date_str, str):
+            return "Unknown Week"
+        
         # Try to find a date pattern in the string
         match = re.search(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})', date_str)
         if match:
