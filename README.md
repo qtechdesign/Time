@@ -1,158 +1,101 @@
-# Contractor Workforce Analyzer
+# Kanadevia Time Tracker Analyzer
 
-A modern, responsive web application for visualizing contractor workforce data from CSV files.
+![Kanadevia Time Tracker](https://img.icons8.com/color/240/overtime--v1.png)
 
-![App Preview](https://img.icons8.com/fluency/240/analytics.png)
+## Overview
+
+The Kanadevia Time Tracker Analyzer is a powerful data visualization tool designed to help construction project managers analyze workforce data from time tracking systems. This tool transforms raw time tracking CSV exports into actionable insights about contractor workforce distribution, site vs. welfare time analysis, role distribution, and contractor comparisons.
 
 ## Features
 
-- 📊 Interactive charts for workers per week per contractor
-- 🔍 Filter by specific contractors or time periods
-- 📱 Fully responsive design
-- 🌙 Dark mode interface
-- 🔒 No cloud storage - all data processed locally
+- **🚀 User-Friendly Interface**: Sleek, modern dark-themed UI with intuitive navigation
+- **👷 Workforce Analysis**: Track workers per week, broken down by contractor and role
+- **⏱️ Site vs. Welfare Analysis**: Visualize productive vs. non-productive time
+- **📈 Contractor Comparison**: Compare multiple contractors' workforce numbers over time
+- **👥 Role Distribution**: Analyze the distribution of roles within each contractor
+- **🔒 Privacy-Focused**: All data is processed locally in your browser - no data is sent to any server
+
+## Live Demo
+
+Try the live demo: [Kanadevia Time Tracker Analyzer on Streamlit](https://time-tracker-analyzer.streamlit.app/)
 
 ## Installation
 
-1. Clone this repository:
-   ```
-   git clone <repository-url>
-   cd contractor-workforce-analyzer
+### Prerequisites
+
+- Python 3.8+
+- pip (Python package installer)
+
+### Setup
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/your-username/kanadevia-time-tracker.git
+   cd kanadevia-time-tracker
    ```
 
-2. Create a virtual environment (optional but recommended):
-   ```
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install the required dependencies:
-   ```
+2. Install the required dependencies:
+   ```bash
    pip install -r requirements.txt
+   ```
+
+3. Run the application locally:
+   ```bash
+   streamlit run app.py
    ```
 
 ## Usage
 
-1. Start the application:
-   ```
-   streamlit run app.py
-   ```
+1. Start the application with `streamlit run app.py`
+2. Upload your Time Tracker CSV export file
+3. Navigate through the different visualization tabs:
+   - Workforce by Week
+   - Site vs. Welfare Time
+   - Contractor Comparison
+   - Role Distribution
 
-2. Open your web browser and navigate to the URL displayed in the terminal (typically http://localhost:8501)
+## Expected CSV Format
 
-3. Follow the three-step process in the app:
-   - Welcome screen
-   - Upload your CSV file
-   - Explore visualizations
+For best results, your CSV should include these columns:
 
-## CSV File Format
+- **Contractor/Company**: The name of the contracting company
+- **Worker Name**: The name of the worker
+- **Role/Trade**: Worker's role or job title
+- **In/Out**: Date and time of entry/exit (format: DD/MM/YYYY HH:MM)
+- **Area**: Location in the project (e.g., Site, Welfare)
+- **Total Minutes**: Duration in minutes (calculated automatically if missing)
 
-The application supports the Time tracking system CSV format with columns for:
-- **Contractor**: The name of the contractor
-- **Person/Name**: The person's name
-- **StartTime/EndTime**: Date and time of the activity
-- **Area**: Location type (e.g., 'Site', 'Welfare')
-- **Role/Job Title**: The worker's role or position
-- **Duration**: Duration of the activity in minutes
+A sample CSV file is included in the repository.
 
-Example CSV structure:
-```
-Contractor,Person,StartTime,EndTime,Area,Duration,Role
-Allelys,John Smith,13/06/2024 11:27,13/06/2024 11:39,Site,12,Operative
-Allelys,John Smith,13/06/2024 11:39,13/06/2024 13:08,Welfare,89,Operative
-```
+## Customization
 
-## Deployment Options
+The application can be customized through modifying:
 
-### Streamlit Cloud (Recommended)
+- `utils.py` for data processing logic 
+- `app.py` for UI components and visualizations
 
-The easiest way to deploy this app is using [Streamlit Cloud](https://streamlit.io/cloud):
+## Technologies Used
 
-1. Push your code to a GitHub repository
-2. Sign up for Streamlit Cloud
-3. Deploy directly from your GitHub repository
-4. Your app will be available at a shareable URL
+- **Streamlit**: Frontend framework
+- **Pandas**: Data manipulation
+- **Plotly**: Interactive visualizations
+- **NumPy**: Numerical operations
 
-### Heroku
+## Contact
 
-You can deploy to Heroku by:
-
-1. Creating a `Procfile` with:
-   ```
-   web: streamlit run app.py --server.port=$PORT
-   ```
-2. Following the [Heroku deployment guide](https://devcenter.heroku.com/articles/getting-started-with-python)
-
-### Vercel Deployment
-
-While Vercel is primarily for static sites and serverless functions, you can deploy a Streamlit app on Vercel with some additional configuration:
-
-1. Create a `vercel.json` file:
-   ```json
-   {
-     "builds": [
-       { "src": "index.py", "use": "@vercel/python" }
-     ],
-     "routes": [
-       { "src": "/(.*)", "dest": "index.py" }
-     ]
-   }
-   ```
-
-2. Create a wrapper file `index.py`:
-   ```python
-   from http.server import BaseHTTPRequestHandler
-
-   class handler(BaseHTTPRequestHandler):
-       def do_GET(self):
-           self.send_response(200)
-           self.send_header('Content-type', 'text/plain')
-           self.end_headers()
-           self.wfile.write('Please note: Streamlit apps require a server runtime and cannot be deployed directly on Vercel. Consider using Streamlit Cloud or Heroku instead.'.encode())
-           return
-   ```
-
-3. Deploy to Vercel
-
-**Note**: This will only serve a static page explaining that Streamlit requires a server runtime. For a full-featured Streamlit app, we recommend using Streamlit Cloud, Heroku, or a containerized solution like Docker with a cloud provider that supports containers.
-
-### Docker Deployment
-
-For more advanced deployment, you can use Docker:
-
-1. Create a `Dockerfile`:
-   ```dockerfile
-   FROM python:3.9-slim
-
-   WORKDIR /app
-
-   COPY requirements.txt .
-   RUN pip install -r requirements.txt
-
-   COPY . .
-
-   EXPOSE 8501
-
-   CMD ["streamlit", "run", "app.py"]
-   ```
-
-2. Build and run the Docker image:
-   ```
-   docker build -t contractor-workforce-analyzer .
-   docker run -p 8501:8501 contractor-workforce-analyzer
-   ```
-
-## Development
-
-This application is built with:
-- [Streamlit](https://streamlit.io/) - The web framework
-- [Plotly](https://plotly.com/) - For interactive visualizations
-- [Pandas](https://pandas.pydata.org/) - For data manipulation
+- Website: [kanadevia.io](https://kanadevia.io)
+- Email: [safety@kanadevia.io](mailto:safety@kanadevia.io)
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Privacy
+## Screenshots
 
-This application processes all data locally on your machine. No data is sent to any server or stored in the cloud. 
+![Workforce Analysis](https://example.com/screenshot1.jpg)
+![Time Analysis](https://example.com/screenshot2.jpg)
+
+## Acknowledgements
+
+- Icons by [Icons8](https://icons8.com/)
+- Color palettes inspired by [Material Design](https://material.io/design/color/the-color-system.html) 
