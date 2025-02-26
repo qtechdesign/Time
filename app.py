@@ -16,14 +16,66 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Add clipboard.js for graph copying
+# Add clipboard.js for graph copying - updated with more robust initialization
 st.markdown("""
 <script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.8/clipboard.min.js"></script>
 <script>
+// Wait for DOM to be fully loaded
 document.addEventListener('DOMContentLoaded', function() {
-    new ClipboardJS('.copy-btn');
+    setTimeout(function() {
+        // Initialize clipboard.js with a delay to ensure all elements are ready
+        try {
+            var clipboard = new ClipboardJS('.copy-btn');
+            console.log('Clipboard.js initialized successfully');
+            
+            clipboard.on('success', function(e) {
+                console.log('Copy success!');
+                var successMsg = document.getElementById('copy-success-' + e.trigger.getAttribute('data-target'));
+                if(successMsg) {
+                    successMsg.style.display = 'block';
+                    setTimeout(function() {
+                        successMsg.style.display = 'none';
+                    }, 2000);
+                }
+                e.clearSelection();
+            });
+            
+            clipboard.on('error', function(e) {
+                console.error('Copy error:', e);
+                alert('Failed to copy to clipboard. Please try again or use the download option.');
+            });
+        } catch (err) {
+            console.error('Error initializing clipboard:', err);
+        }
+    }, 1000); // 1 second delay to ensure DOM is ready
 });
 </script>
+<style>
+.copy-btn {
+    background-color: #4a86e8;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    margin: 10px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    display: block;
+    text-align: center;
+    width: 100%;
+    max-width: 300px;
+    transition: background-color 0.3s;
+}
+.copy-btn:hover {
+    background-color: #3a76d8;
+}
+.copy-success {
+    color: green;
+    display: none;
+    margin-top: 5px;
+    font-weight: bold;
+}
+</style>
 """, unsafe_allow_html=True)
 
 # Check for kaleido package for image export
@@ -34,7 +86,7 @@ except ImportError:
     KALEIDO_AVAILABLE = False
     st.warning("⚠️ Chart copying feature requires the kaleido package. Install with: `pip install -U kaleido`")
 
-# Custom function to add copy button for Plotly charts - MOVED TO TOP OF FILE
+# Custom function to add copy button for Plotly charts - COMPLETELY REWRITTEN
 def add_copy_button_to_chart(fig, title="Chart"):
     """Add a button to copy the chart as an image to clipboard"""
     if not KALEIDO_AVAILABLE:
@@ -42,36 +94,56 @@ def add_copy_button_to_chart(fig, title="Chart"):
         return
         
     try:
-        # Convert chart to base64 image
-        img_bytes = fig.to_image(format="png", scale=2)  # Increased scale for better quality
-        img_b64 = base64.b64encode(img_bytes).decode()
+        # Generate a unique ID for this chart
+        import uuid
+        chart_id = str(uuid.uuid4())[:8]
         
-        # Create HTML for copy button and direct download link (hide download icon as requested)
+        # Convert chart to base64 image with higher quality
+        try:
+            img_bytes = fig.to_image(format="png", scale=3, width=1200, height=800)
+            img_b64 = base64.b64encode(img_bytes).decode()
+        except Exception as e:
+            st.warning(f"Error generating image: {str(e)}")
+            return
+        
+        # Create HTML for copy button with improved design and error handling
         copy_button_html = f"""
-        <button class="copy-btn" data-clipboard-text="data:image/png;base64,{img_b64}" style="padding: 8px 12px; font-size: 14px; margin-bottom: 10px;">
-            📋 Copy Chart to Clipboard
-        </button>
-        <a href="data:image/png;base64,{img_b64}" download="{title.replace(' ', '_')}.png" class="download-btn" style="display:none;">
-            Download Image
-        </a>
-        <div id="copy-success" style="display:none; color:green;">✅ Copied!</div>
-        <script>
-        // Improved clipboard handling
-        document.addEventListener('DOMContentLoaded', function() {{
-            var clipboard = new ClipboardJS('.copy-btn');
-            clipboard.on('success', function(e) {{
-                document.getElementById('copy-success').style.display = 'block';
+        <div style="margin: 10px 0;">
+            <button 
+                class="copy-btn" 
+                data-clipboard-text="data:image/png;base64,{img_b64}"
+                data-target="{chart_id}"
+            >
+                📋 Copy Chart to Clipboard
+            </button>
+            <a 
+                href="data:image/png;base64,{img_b64}" 
+                download="{title.replace(' ', '_')}.png" 
+                style="display:none;"
+            >
+                Download Image
+            </a>
+            <div id="copy-success-{chart_id}" class="copy-success">
+                ✅ Chart copied to clipboard! You can now paste it in WhatsApp, email, etc.
+            </div>
+            <script>
+                // Ensure this specific button is properly initialized
                 setTimeout(function() {{
-                    document.getElementById('copy-success').style.display = 'none';
-                }}, 2000);
-                e.clearSelection();
-            }});
-        }});
-        </script>
+                    var btnElement = document.querySelector('[data-target="{chart_id}"]');
+                    if (btnElement && !btnElement.hasAttribute('data-clipboard-initialized')) {{
+                        btnElement.setAttribute('data-clipboard-initialized', 'true');
+                        btnElement.addEventListener('click', function() {{
+                            console.log('Button {chart_id} clicked');
+                        }});
+                    }}
+                }}, 500);
+            </script>
+        </div>
         """
         st.markdown(copy_button_html, unsafe_allow_html=True)
     except Exception as e:
         st.warning(f"Unable to generate copy button: {str(e)}")
+        st.code(str(e))
 
 # Custom CSS for dark mode and sleeker design - REMOVE ANIMATIONS
 st.markdown("""
@@ -200,7 +272,7 @@ if 'role_dist_contractor' not in st.session_state:
 if 'role_colors' not in st.session_state:
     st.session_state.role_colors = {}  # For consistent role coloring
 if 'allow_multiple_selection' not in st.session_state:
-    st.session_state.allow_multiple_selection = False
+    st.session_state.allow_multiple_selection = True  # Changed from False to True to enable by default
 
 # Functions for navigation
 def next_step():
@@ -270,47 +342,54 @@ def select_contractor(location, default_contractor=None, key_prefix=""):
         st.session_state.selected_contractor = contractors[0]
         st.session_state.selected_contractors = [contractors[0]]
     
-    # Create a toggle for multiple selection
-    col1, col2 = location.columns([3, 1])
-    with col2:
-        st.toggle("Allow Multiple", value=st.session_state.allow_multiple_selection, key=f"{key_prefix}_toggle_multiple", on_change=toggle_multiple_selection)
+    # Define building services contractors to always include if available
+    building_services = ["Argus Fire", "Emico", "Greenwood Louvres", "Sotham Engineering", "Ronzoni"]
+    available_building_services = [c for c in contractors if c in building_services]
     
-    # Display either multiselect or regular select based on user choice
-    with col1:
-        if st.session_state.allow_multiple_selection:
-            # Use multiselect with current selection
-            default_selection = st.session_state.selected_contractors
-            # Make sure default selection contains only valid contractors
-            default_selection = [c for c in default_selection if c in contractors]
-            if not default_selection and contractors:
-                default_selection = [contractors[0]]
-                
-            selected = st.multiselect(
-                "Select Contractor(s)", 
-                options=contractors,
-                default=default_selection,
-                key=f"{key_prefix}_contractor_multiselect",
-                on_change=update_selected_contractor
-            )
-            # Store in session state 
-            st.session_state.contractor_multiselect = selected
-            return selected
+    # If no selection yet or we're at the initial load, use building services contractors if available
+    if not st.session_state.selected_contractors or set(st.session_state.selected_contractors) != set(available_building_services):
+        if available_building_services:
+            # Always include all available building services contractors
+            default_selection = available_building_services
         else:
-            # Use regular selectbox
-            default_idx = 0
-            if st.session_state.selected_contractor in contractors:
-                default_idx = contractors.index(st.session_state.selected_contractor)
-                
-            selected = st.selectbox(
-                "Select Contractor", 
-                options=contractors,
-                index=default_idx,
-                key=f"{key_prefix}_contractor_select",
-                on_change=update_selected_contractor
-            )
-            # Store in session state
-            st.session_state.contractor_select = selected
-            return [selected] if selected else []
+            # Get top contractors by unique worker count
+            contractor_workers = {}
+            for contractor in contractors:
+                contractor_data = st.session_state.raw_data[st.session_state.raw_data['Contractor'] == contractor] if 'Contractor' in st.session_state.raw_data.columns else st.session_state.raw_data
+                contractor_workers[contractor] = calculate_unique_workers(contractor_data)
+            
+            # Get top 5 contractors
+            top_contractors = sorted(contractor_workers.items(), key=lambda x: x[1], reverse=True)[:5]
+            default_selection = [c[0] for c in top_contractors]
+    else:
+        # Use current selection
+        default_selection = st.session_state.selected_contractors
+        
+    # Ensure default selection only includes valid contractors
+    default_selection = [c for c in default_selection if c in contractors]
+    if not default_selection and contractors:
+        default_selection = [contractors[0]]
+    
+    # Use multiselect similar to Contractor Comparison tab
+    selected = location.multiselect(
+        "Select Contractor(s)", 
+        options=contractors,
+        default=default_selection,
+        key=f"{key_prefix}_contractor_multiselect"
+    )
+    
+    # Store in session state
+    st.session_state.selected_contractors = selected
+    if selected:
+        st.session_state.selected_contractor = selected[0]
+    else:
+        st.session_state.selected_contractor = None
+    
+    # Sync all contractor selections
+    st.session_state.time_analysis_contractor = st.session_state.selected_contractor
+    st.session_state.role_dist_contractor = st.session_state.selected_contractor
+    
+    return selected
 
 # Calculate unique workers in the dataset
 def calculate_unique_workers(raw_df):
@@ -474,7 +553,6 @@ def display_key_facts(df, raw_df):
         st.subheader("All Contractors - Unique Worker Analysis")
         # Create a dataframe with all contractors and their unique worker counts
         all_contractors_df = pd.DataFrame({
-            'Row': range(1, len(contractor_workers) + 1),
             'Contractor': list(contractor_workers.keys()),
             'Unique Workers': list(contractor_workers.values())
         }).sort_values('Unique Workers', ascending=False)
@@ -825,7 +903,7 @@ elif st.session_state.step == 2:
                             with col2:
                                 peak_week = combined_df.groupby('ISO Week')['Number of Workers'].sum().idxmax()
                                 peak = combined_df.groupby('ISO Week')['Number of Workers'].sum().max()
-                                st.metric("Peak Week ��", f"{peak_week}: {peak} unique workers")
+                                st.metric("Peak Week", f"{peak_week}: {peak} unique workers")
                             
                             with col3:
                                 unique_roles = combined_df['Role'].nunique()
@@ -862,17 +940,21 @@ elif st.session_state.step == 2:
                 if 'Area' not in raw_df.columns:
                     st.info("No Area column found in the data. This analysis requires an 'Area' column to distinguish between Site and Welfare areas.")
                 else:
-                    # Use the unified contractor selection function
-                    selected_contractors = select_contractor(st, key_prefix="tab2")
+                    # Get available contractors
+                    contractors = raw_df['Contractor'].unique().tolist()
                     
-                    if selected_contractors:
-                        # For simplicity in time analysis, we'll use only the first selected contractor
-                        # as time analysis is more complex with multiple contractors
-                        selected_contractor = selected_contractors[0]
-                        
-                        if len(selected_contractors) > 1:
-                            st.info("Note: Time analysis is shown for the first selected contractor only.")
-                        
+                    # Check if Emico is in the data and set it as default
+                    default_contractor = "Emico" if "Emico" in contractors else None
+                    
+                    # For this tab, we'll use a simple selectbox since only one contractor can be displayed
+                    selected_contractor = st.selectbox(
+                        "Select Contractor",
+                        options=contractors,
+                        index=contractors.index(default_contractor) if default_contractor in contractors else 0,
+                        key="time_analysis_selectbox"
+                    )
+                    
+                    if selected_contractor:
                         # Filter data for selected contractor
                         filtered_raw_df = raw_df[raw_df['Contractor'] == selected_contractor]
                         
@@ -1082,31 +1164,8 @@ elif st.session_state.step == 2:
                 if len(contractors) < 2:
                     st.info("At least 2 contractors are needed for comparison. Your data contains only one contractor.")
                 else:
-                    # Target contractors to select by default - Updated with correct names
-                    target_contractors = ["Emico", "Argus Fire", "Greenwood Louvres", "Ronzoni", "Sotham Engineering"]
-                    
-                    # Check which of the target contractors exist in our data
-                    available_targets = [c for c in contractors if c in target_contractors]
-                    
-                    # If none of the targets exist, select top contractors by worker count
-                    if not available_targets:
-                        # Get top contractors by unique worker count
-                        contractor_workers = {}
-                        for contractor in contractors:
-                            contractor_data = raw_df[raw_df['Contractor'] == contractor] if 'Contractor' in raw_df.columns else raw_df
-                            contractor_workers[contractor] = calculate_unique_workers(contractor_data)
-                        
-                        # Get top 5 contractors
-                        top_contractors = sorted(contractor_workers.items(), key=lambda x: x[1], reverse=True)[:5]
-                        default_selection = [c[0] for c in top_contractors]
-                    else:
-                        default_selection = available_targets
-                    
-                    selected_contractors = st.multiselect(
-                        "Select Contractors to Compare", 
-                        options=contractors,
-                        default=default_selection
-                    )
+                    # Use the unified contractor selection function for consistency
+                    selected_contractors = select_contractor(st, key_prefix="tab3")
                     
                     if selected_contractors:
                         # Process data to ensure unique worker counts for each contractor
@@ -1175,17 +1234,21 @@ elif st.session_state.step == 2:
             with tab4:
                 st.subheader("Role Distribution Analysis 👥")
                 
-                # Use the unified contractor selection function
-                selected_contractors = select_contractor(st, key_prefix="tab4")
+                # Get available contractors
+                contractors = raw_df['Contractor'].unique().tolist()
                 
-                if selected_contractors:
-                    # For simplicity in role distribution, we'll use only the first selected contractor
-                    # as role distribution is more meaningful for individual contractors
-                    selected_contractor = selected_contractors[0]
-                    
-                    if len(selected_contractors) > 1:
-                        st.info("Note: Role distribution is shown for the first selected contractor only.")
-                    
+                # Check if Emico is in the data and set it as default
+                default_contractor = "Emico" if "Emico" in contractors else None
+                
+                # For this tab, we'll use a simple selectbox since only one contractor can be displayed
+                selected_contractor = st.selectbox(
+                    "Select Contractor",
+                    options=contractors,
+                    index=contractors.index(default_contractor) if default_contractor in contractors else 0,
+                    key="role_distribution_selectbox"
+                )
+                
+                if selected_contractor:
                     # Get data with unique worker counts
                     filtered_df = process_data_for_unique_workers(df, raw_df, selected_contractor)
                     
